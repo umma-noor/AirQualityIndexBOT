@@ -1,0 +1,47 @@
+name: 🌫️ AQI Model Training Pipeline
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # Runs every day at midnight UTC
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout your repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2️⃣ Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4️⃣ Load environment variables (API keys)
+      - name: Set environment variables
+        env:
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+        run: echo "✅ Environment variables loaded."
+
+      # 5️⃣ Run the training pipeline
+      - name: Run AQI Training Pipeline
+        env:
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+        run: |
+          python training_pipeline/train_model.py
+
+      # 6️⃣ Upload the trained model as artifact
+      - name: Upload Trained Model
+        uses: actions/upload-artifact@v3
+        with:
+          name: aqi_model
+          path: models/aqi_predictor_mlflow.pkl
