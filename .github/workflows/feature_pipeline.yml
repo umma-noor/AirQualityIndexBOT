@@ -1,12 +1,12 @@
-name: 🤖 Daily Model Training
+name: 🌫️ Feature Pipeline
 
 on:
   schedule:
-    - cron: "0 2 * * *"  # every day at 2 AM UTC
+    - cron: "0 * * * *"  # every hour
   workflow_dispatch:
 
 jobs:
-  train-model:
+  run-feature-pipeline:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,5 +27,5 @@ jobs:
           echo "HOPSWORKS_API_KEY=${{ secrets.HOPSWORKS_API_KEY }}" >> $GITHUB_ENV
           echo "HOPSWORKS_PROJECT_NAME=${{ secrets.HOPSWORKS_PROJECT_NAME }}" >> $GITHUB_ENV
 
-      - name: Run Model Training
+      - name: Run Feature Extraction
         run: python training_pipeline/train_model.py
