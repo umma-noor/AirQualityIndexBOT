@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/HP/Desktop/aqi-bot/mlruns/407891058518264906/632cff91a0e34daa9600d78d8b8ca8ed/artifacts
+end_time: 1761409856471
+entry_point_name: ''
+experiment_id: '407891058518264906'
+lifecycle_stage: active
+run_id: 632cff91a0e34daa9600d78d8b8ca8ed
+run_name: New York_last90days_RF
+run_uuid: 632cff91a0e34daa9600d78d8b8ca8ed
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1761409832564
+status: 3
+tags: []
+user_id: HP

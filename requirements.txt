@@ -20,3 +20,5 @@ gradio
 mlflow
 hopsworks
 joblib
+
+prophet
