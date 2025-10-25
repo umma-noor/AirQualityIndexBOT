@@ -12,7 +12,7 @@ jobs:
     steps:
       # 1️⃣ Checkout your repository
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 2️⃣ Set up Python
       - name: Set up Python
@@ -39,9 +39,9 @@ jobs:
         run: |
           python training_pipeline/train_model.py
 
-      # 6️⃣ Upload the trained model as artifact
+      # 6️⃣ Upload the trained model as artifact (v4)
       - name: Upload Trained Model
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aqi_model
           path: models/aqi_predictor_mlflow.pkl
