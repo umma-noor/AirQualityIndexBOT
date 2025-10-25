@@ -1,0 +1,22 @@
+# Core
+pandas
+numpy
+requests
+python-dotenv
+
+# ML & Analysis
+scikit-learn
+matplotlib
+seaborn
+shap
+
+# API & App
+fastapi
+uvicorn
+streamlit
+gradio
+
+# CI/CD & Utils
+mlflow
+hopsworks
+joblib
