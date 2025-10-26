@@ -22,3 +22,5 @@ hopsworks==4.2.*
 joblib
 
 prophet
+kafka
+hopsworks[python]
