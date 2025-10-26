@@ -168,7 +168,6 @@ def train_and_log_mlflow(df, city, days):
         mlflow.log_metric("RMSE", rmse)
         mlflow.log_metric("MAE", mae)
         mlflow.log_metric("R2", r2)
-
         mlflow.sklearn.log_model(model, artifact_path="model")
 
     metrics = {"RMSE": rmse, "MAE": mae, "R2": r2}
@@ -219,61 +218,33 @@ def save_model(model):
     print(f"💾 Model saved at: {model_path}")
 
 # ---------------------------
-# 9️⃣  Generate 3-Day AQI Forecast
-# ---------------------------
-def generate_3day_forecast(df):
-    """
-    Train a Prophet model on historical AQI data
-    and predict AQI for the next 3 days.
-    """
-    from prophet import Prophet
-    print("📅 Generating 3-day AQI forecast...")
-
-    # Prepare data for Prophet
-    forecast_df = df[["datetime", "aqi"]].rename(columns={"datetime": "ds", "aqi": "y"})
-    forecast_df = forecast_df.dropna()
-
-    # Initialize and fit Prophet
-    model = Prophet(daily_seasonality=True, yearly_seasonality=True)
-    model.fit(forecast_df)
-
-    # Make future dataframe (next 3 days)
-    future = model.make_future_dataframe(periods=3, freq="D")
-    forecast = model.predict(future)
-
-    # Save forecast to CSV
-    os.makedirs("models", exist_ok=True)
-    forecast.to_csv("models/aqi_3day_forecast.csv", index=False)
-    print("✅ 3-day AQI forecast saved at models/aqi_3day_forecast.csv")
-# ---------------------------
-# 🪣 Save to Hopsworks Feature Store (Fixed)
+# 9️⃣ Save to Hopsworks Feature Store
 # ---------------------------
 def save_to_feature_store(df):
     import hopsworks
     print("📡 Connecting to Hopsworks...")
 
-    # Convert datetime to string (for primary key compatibility)
     df["datetime_str"] = df["datetime"].astype(str)
 
-    # Connect to Hopsworks
+    # Login and get feature store
     project = hopsworks.login()
-    fs = project.get_feature_store()
+    fs = project.get_feature_store()  # uses default connected FS
 
-    # Create or reuse a feature group
+    # Create or reuse feature group
     feature_group = fs.get_or_create_feature_group(
         name="aqi_features",
         version=1,
         description="Air quality and weather features for AQI prediction",
-        primary_key=["datetime_str"],  # ✅ fixed PK type
+        primary_key=["datetime_str"],
         online_enabled=True
     )
 
-    # Insert data into the feature group
+    # Insert data
     feature_group.insert(df)
     print("✅ Features successfully inserted into Hopsworks Feature Store!")
 
 # ---------------------------
-#  🔚 Update Main Execution
+# 🔚 Main Execution
 # ---------------------------
 if __name__ == "__main__":
     city = "New York"
@@ -284,12 +255,9 @@ if __name__ == "__main__":
     weather_df = fetch_weather_data(city, days)
     df = create_features(aqi_df, weather_df)
 
-    # 🟢 Store engineered features in Hopsworks
-    save_to_feature_store(df)
+    save_to_feature_store(df)       # ✅ Hopsworks FS
+    model = train_and_log_mlflow(df, city, days)  # MLflow logging
+    save_model(model)               # Local model
+    forecast_aqi(df, days_ahead=3)  # 3-day Prophet forecast
 
-    model = train_and_log_mlflow(df, city, days)
-    save_model(model)
-    generate_3day_forecast(df)
     print("\n✅ Training Pipeline Completed Successfully.")
-
-
