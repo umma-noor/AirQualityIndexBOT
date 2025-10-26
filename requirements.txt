@@ -18,7 +18,7 @@ gradio
 
 # CI/CD & Utils
 mlflow
-hopsworks
+hopsworks==4.2.*
 joblib
 
 prophet
