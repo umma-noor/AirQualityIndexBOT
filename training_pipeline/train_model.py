@@ -168,7 +168,9 @@ def train_and_log_mlflow(df, city, days):
         mlflow.log_metric("RMSE", rmse)
         mlflow.log_metric("MAE", mae)
         mlflow.log_metric("R2", r2)
-        mlflow.sklearn.log_model(model, artifact_path="trained_model")
+        os.makedirs("mlruns/model_artifacts", exist_ok=True)
+        mlflow.sklearn.log_model(model, artifact_path="./mlruns/model_artifacts")
+
 
     metrics = {"RMSE": rmse, "MAE": mae, "R2": r2}
     os.makedirs("models", exist_ok=True)
