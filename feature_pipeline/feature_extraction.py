@@ -1,111 +1,133 @@
 import os
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-# Load environment variables
+# ---------------------------
+# 1️⃣ Load API Key
+# ---------------------------
 load_dotenv()
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-AQICN_API_KEY = os.getenv("AQICN_API_KEY")
-
 
 # ---------------------------
-# 1️⃣ Fetch Weather Data
+# 2️⃣ Get City Coordinates
 # ---------------------------
-def get_weather_data(city: str):
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={OPENWEATHER_API_KEY}&units=metric"
-    response = requests.get(url)
-    data = response.json()
-
-    if response.status_code == 200:
-        return {
-            "temperature": data["main"]["temp"],
-            "humidity": data["main"]["humidity"],
-            "pressure": data["main"]["pressure"],
-            "wind_speed": data["wind"]["speed"],
-        }
-    else:
-        print("Error fetching weather:", data)
-        return None
-
+def get_city_coordinates(city):
+    url = f"http://api.openweathermap.org/geo/1.0/direct?q={city}&limit=1&appid={OPENWEATHER_API_KEY}"
+    response = requests.get(url).json()
+    if not response:
+        raise ValueError(f"❌ Could not find coordinates for city: {city}")
+    lat, lon = response[0]["lat"], response[0]["lon"]
+    print(f"📍 {city} located at (lat={lat}, lon={lon})")
+    return lat, lon
 
 # ---------------------------
-# 2️⃣ Fetch AQI Data
+# 3️⃣ Fetch AQI Data
 # ---------------------------
-def get_aqi_data(city: str):
-    url = f"https://api.waqi.info/feed/{city}/?token={AQICN_API_KEY}"
-    response = requests.get(url)
-    data = response.json()
+def fetch_aqi_data(city="New York", days=60):
+    print(f"🌫️ Fetching AQI history for {city} ({days} days)...")
+    lat, lon = get_city_coordinates(city)
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+    url = (
+        f"http://api.openweathermap.org/data/2.5/air_pollution/history?"
+        f"lat={lat}&lon={lon}&start={int(start_date.timestamp())}&end={int(end_date.timestamp())}&appid={OPENWEATHER_API_KEY}"
+    )
+    response = requests.get(url).json()
+    if "list" not in response:
+        raise ValueError("❌ No AQI data found. Check API key or city.")
 
-    if data.get("status") == "ok":
-        aqi = data["data"]["aqi"]
-        dominentpol = data["data"]["dominentpol"]
-        return {"aqi": aqi, "dominent_pol": dominentpol}
-    else:
-        print("Error fetching AQI:", data)
-        return None
-
-
-# ---------------------------
-# 3️⃣ Combine & Add Features
-# ---------------------------
-def collect_features(city: str):
-    weather = get_weather_data(city)
-    aqi = get_aqi_data(city)
-
-    if weather and aqi:
-        # Merge weather + AQI data
-        features = {**weather, **aqi, "city": city}
-
-        # Add time-based features
-        now = datetime.now()
-        features["hour"] = now.hour
-        features["day"] = now.day
-        features["month"] = now.month
-        features["weekday"] = now.weekday()  # 0 = Monday
-
-        # Add timestamp
-        features["timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
-
-        # Convert to DataFrame
-        df = pd.DataFrame([features])
-
-        # Add derived feature: AQI change rate (if previous data exists)
-        csv_path = "data/aqi_features.csv"
-        if os.path.exists(csv_path):
-            prev_df = pd.read_csv(csv_path)
-            if not prev_df.empty:
-                last_aqi = prev_df["aqi"].iloc[-1]
-                df["aqi_change_rate"] = df["aqi"] - last_aqi
-            else:
-                df["aqi_change_rate"] = 0
-        else:
-            df["aqi_change_rate"] = 0
-
-        return df
-    else:
-        return None
-
+    records = []
+    for entry in response["list"]:
+        ts = datetime.utcfromtimestamp(entry["dt"])
+        comps = entry["components"]
+        records.append({
+            "datetime": ts,
+            "aqi": entry["main"]["aqi"],
+            "co": comps.get("co"),
+            "no2": comps.get("no2"),
+            "o3": comps.get("o3"),
+            "so2": comps.get("so2"),
+            "pm2_5": comps.get("pm2_5"),
+            "pm10": comps.get("pm10"),
+            "nh3": comps.get("nh3")
+        })
+    df = pd.DataFrame(records)
+    print(f"✅ Fetched {len(df)} AQI records.")
+    return df
 
 # ---------------------------
-# 4️⃣ Save Data
+# 4️⃣ Fetch Weather Data (with progress)
+# ---------------------------
+def fetch_weather_data(city="New York", days=60):
+    print(f"🌤️ Fetching weather data for {city} ({days} days)...")
+
+    lat, lon = get_city_coordinates(city)
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    url_template = "https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={key}&units=metric"
+    records = []
+
+    for i in range(days):
+        date = start_date + timedelta(days=i)
+        url = url_template.format(lat=lat, lon=lon, key=OPENWEATHER_API_KEY)
+        try:
+            response = requests.get(url, timeout=10).json()
+            if response.get("cod") == 200:
+                main = response["main"]
+                wind = response.get("wind", {})
+                records.append({
+                    "datetime": date,
+                    "temperature": main.get("temp"),
+                    "humidity": main.get("humidity"),
+                    "pressure": main.get("pressure"),
+                    "wind_speed": wind.get("speed")
+                })
+        except Exception as e:
+            print(f"⚠️ Error fetching weather for {date.date()}: {e}")
+
+        if i % 10 == 0:
+            print(f"☀️ Processed {i} days...")
+
+    df = pd.DataFrame(records)
+    print(f"✅ Weather data fetched: {len(df)} records")
+    return df
+
+# ---------------------------
+# 5️⃣ Merge and Feature Creation
+# ---------------------------
+def create_features(aqi_df, weather_df):
+    print("🧩 Creating features...")
+    aqi_df["datetime"] = pd.to_datetime(aqi_df["datetime"])
+    weather_df["datetime"] = pd.to_datetime(weather_df["datetime"])
+
+    df = pd.merge_asof(aqi_df.sort_values("datetime"),
+                       weather_df.sort_values("datetime"),
+                       on="datetime", direction="nearest")
+
+    df["hour"] = df["datetime"].dt.hour
+    df["day"] = df["datetime"].dt.day
+    df["month"] = df["datetime"].dt.month
+    df["weekday"] = df["datetime"].dt.weekday
+    df["aqi_change_rate"] = df["aqi"].diff().fillna(0)
+
+    df = df.dropna()
+    print("✅ Feature dataset ready. Shape:", df.shape)
+    return df
+
+# ---------------------------
+# 6️⃣ Main Execution
 # ---------------------------
 if __name__ == "__main__":
-    city = "Lahore"  # You can change or loop through multiple cities
-    df = collect_features(city)
+    city = "New York"
+    days = 360
+    print("🚀 Feature Extraction Started...")
+    aqi_df = fetch_aqi_data(city, days)
+    weather_df = fetch_weather_data(city, days)
+    df = create_features(aqi_df, weather_df)
 
-    if df is not None:
-        print("\n✅ Latest Features:\n", df)
-        os.makedirs("data", exist_ok=True)
-        csv_path = "data/aqi_features.csv"
-
-        # Append new data to existing CSV (keep history)
-        if os.path.exists(csv_path):
-            df.to_csv(csv_path, mode="a", header=False, index=False)
-        else:
-            df.to_csv(csv_path, index=False)
-
-        print(f"\n📁 Saved features to {csv_path}")
-    else:
-        print("\n❌ Failed to collect data.")
+    os.makedirs("models", exist_ok=True)
+    df.to_csv("models/feature_data.csv", index=False)
+    print("💾 Features saved to models/feature_data.csv")

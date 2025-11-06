@@ -12,12 +12,31 @@ import mlflow
 import mlflow.sklearn
 from prophet import Prophet
 import json
+import shutil
 
 # ---------------------------
 # 1️⃣ Load API Keys
 # ---------------------------
 load_dotenv()
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+
+# ---------------------------
+# 🧹 MLflow Auto-clean Setup
+# ---------------------------
+def clean_malformed_mlruns(base_dir="mlruns"):
+    malformed_dirs = []
+    if not os.path.exists(base_dir):
+        return
+    for subdir in os.listdir(base_dir):
+        path = os.path.join(base_dir, subdir)
+        if os.path.isdir(path) and not os.path.exists(os.path.join(path, "meta.yaml")):
+            malformed_dirs.append(path)
+    for d in malformed_dirs:
+        try:
+            shutil.rmtree(d)
+            print(f"🧹 Removed malformed MLflow folder: {d}")
+        except Exception as e:
+            print(f"⚠️ Could not remove malformed folder {d}: {e}")
 
 # ---------------------------
 # 2️⃣ Utility: Get Coordinates of City
@@ -138,6 +157,14 @@ def create_features(aqi_df, weather_df):
 # ---------------------------
 def train_and_log_mlflow(df, city, days):
     print("🤖 Training model with MLflow logging...")
+
+    # 🧹 Clean up any malformed MLflow dirs
+    clean_malformed_mlruns("mlruns")
+
+    # Create timestamped experiment
+    experiment_name = f"AQI_Prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    mlflow.set_experiment(experiment_name)
+
     features = [
         "co", "no2", "o3", "so2", "pm2_5", "pm10", "nh3",
         "temperature", "humidity", "pressure", "wind_speed",
@@ -157,8 +184,6 @@ def train_and_log_mlflow(df, city, days):
     mae = mean_absolute_error(y_test, preds)
     r2 = r2_score(y_test, preds)
 
-    mlflow.set_experiment("AQI Prediction Project")
-
     with mlflow.start_run(run_name=f"{city}_last{days}days_RF"):
         mlflow.log_param("city", city)
         mlflow.log_param("days_of_data", days)
@@ -168,9 +193,15 @@ def train_and_log_mlflow(df, city, days):
         mlflow.log_metric("RMSE", rmse)
         mlflow.log_metric("MAE", mae)
         mlflow.log_metric("R2", r2)
-        os.makedirs("mlruns/model_artifacts", exist_ok=True)
-        mlflow.sklearn.log_model(model, artifact_path="./mlruns/model_artifacts")
 
+        # ✅ Log model with input example and signature
+        input_example = X_test.iloc[:5]
+        mlflow.sklearn.log_model(
+            model,
+            artifact_path="model_artifacts",
+            input_example=input_example,
+            registered_model_name="AQI_Predictor_Model"
+        )
 
     metrics = {"RMSE": rmse, "MAE": mae, "R2": r2}
     os.makedirs("models", exist_ok=True)
@@ -183,21 +214,6 @@ def train_and_log_mlflow(df, city, days):
 # ---------------------------
 # 7️⃣ Forecast Future AQI (Prophet)
 # ---------------------------
-def forecast_aqi(df, days_ahead=3):
-    df_prophet = df[["datetime", "aqi"]].rename(columns={"datetime": "ds", "aqi": "y"})
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
-    model.fit(df_prophet)
-
-    future = model.make_future_dataframe(periods=days_ahead)
-    forecast = model.predict(future)
-
-    forecast = forecast[["ds", "yhat", "yhat_lower", "yhat_upper"]].tail(days_ahead)
-    forecast.columns = ["Date", "Predicted_AQI", "Lower", "Upper"]
-    forecast["Category"] = forecast["Predicted_AQI"].apply(categorize_aqi)
-    forecast.to_csv("models/aqi_3day_forecast.csv", index=False)
-    print("📈 3-Day AQI Forecast saved at models/aqi_3day_forecast.csv")
-    return forecast
-
 def categorize_aqi(aqi):
     if aqi <= 50:
         return "Good"
@@ -209,6 +225,22 @@ def categorize_aqi(aqi):
         return "Unhealthy"
     else:
         return "Very Unhealthy"
+
+def forecast_aqi(df, days_ahead=3):
+    df_prophet = df[["datetime", "aqi"]].rename(columns={"datetime": "ds", "aqi": "y"})
+    model = Prophet(daily_seasonality=True, weekly_seasonality=True)
+    model.fit(df_prophet)
+
+    future = model.make_future_dataframe(periods=days_ahead)
+    forecast = model.predict(future)
+
+    forecast = forecast[["ds", "yhat", "yhat_lower", "yhat_upper"]].tail(days_ahead)
+    forecast.columns = ["Date", "Predicted_AQI", "Lower", "Upper"]
+    forecast["Category"] = forecast["Predicted_AQI"].apply(categorize_aqi)
+    os.makedirs("models", exist_ok=True)
+    forecast.to_csv("models/aqi_3day_forecast.csv", index=False)
+    print("📈 3-Day AQI Forecast saved to models/aqi_3day_forecast.csv")
+    return forecast
 
 # ---------------------------
 # 8️⃣ Save Model
@@ -227,21 +259,16 @@ def save_to_feature_store(df):
     print("📡 Connecting to Hopsworks...")
 
     df["datetime_str"] = df["datetime"].astype(str)
-
-    # Login and get feature store
     project = hopsworks.login()
-    fs = project.get_feature_store()  # uses default connected FS
+    fs = project.get_feature_store()
 
-    # Create or reuse feature group
     feature_group = fs.get_or_create_feature_group(
         name="aqi_features",
         version=1,
         description="Air quality and weather features for AQI prediction",
         primary_key=["datetime_str"],
-        online_enabled=True
+        online_enabled=False
     )
-
-    # Insert data
     feature_group.insert(df)
     print("✅ Features successfully inserted into Hopsworks Feature Store!")
 
@@ -257,9 +284,9 @@ if __name__ == "__main__":
     weather_df = fetch_weather_data(city, days)
     df = create_features(aqi_df, weather_df)
 
-    save_to_feature_store(df)       # ✅ Hopsworks FS
-    model = train_and_log_mlflow(df, city, days)  # MLflow logging
-    save_model(model)               # Local model
-    forecast_aqi(df, days_ahead=3)  # 3-day Prophet forecast
+    save_to_feature_store(df)
+    model = train_and_log_mlflow(df, city, days)
+    save_model(model)
+    forecast_aqi(df, days_ahead=3)
 
     print("\n✅ Training Pipeline Completed Successfully.")

@@ -1,0 +1,43 @@
+artifact_path: model_artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.10.11
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.4.2
+is_signature_from_type_hint: false
+mlflow_version: 2.22.0
+model_size_bytes: 631942
+model_uuid: 932237e09457485697782eee474b2132
+prompts: null
+run_id: 4fb028e8ba9a44adbca34ffdce3d6123
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "double", "name": "co", "required": true}, {"type": "double",
+    "name": "no2", "required": true}, {"type": "double", "name": "o3", "required":
+    true}, {"type": "double", "name": "so2", "required": true}, {"type": "double",
+    "name": "pm2_5", "required": true}, {"type": "double", "name": "pm10", "required":
+    true}, {"type": "double", "name": "nh3", "required": true}, {"type": "double",
+    "name": "temperature", "required": true}, {"type": "long", "name": "humidity",
+    "required": true}, {"type": "long", "name": "pressure", "required": true}, {"type":
+    "double", "name": "wind_speed", "required": true}, {"type": "integer", "name":
+    "hour", "required": true}, {"type": "integer", "name": "day", "required": true},
+    {"type": "integer", "name": "month", "required": true}, {"type": "integer", "name":
+    "weekday", "required": true}, {"type": "double", "name": "aqi_change_rate", "required":
+    true}]'
+  outputs: '[{"type": "double", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2025-11-06 18:24:23.929228'
